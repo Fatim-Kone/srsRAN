@@ -1,0 +1,2 @@
+/usr/bin/ar qc libsrsran_hal_bbdev.a CMakeFiles/srsran_hal_bbdev.dir/bbdev_acc.cpp.o CMakeFiles/srsran_hal_bbdev.dir/bbdev_acc_factory.cpp.o CMakeFiles/srsran_hal_bbdev.dir/bbdev.cpp.o CMakeFiles/srsran_hal_bbdev.dir/bbdev_op_pool_factory.cpp.o CMakeFiles/srsran_hal_bbdev.dir/ldpc/bbdev_ldpc_decoder.cpp.o CMakeFiles/srsran_hal_bbdev.dir/ldpc/bbdev_ldpc_encoder.cpp.o
+/usr/bin/ranlib libsrsran_hal_bbdev.a

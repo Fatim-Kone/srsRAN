@@ -236,6 +236,7 @@ void resource_grid_mapper_impl::map(resource_grid_writer&          writer,
 
   // Counter for the number of RE read from the input and mapped to the grid.
   unsigned i_re_buffer = 0;
+  printf("Counter for the number of RE read from the input and mapped to the grid.\n");
   for (int i_symbol = first_symbol; i_symbol != end_symbol; ++i_symbol) {
     // Skip symbol if it is not in the allocation pattern.
     if (!pattern.symbols.test(i_symbol)) {

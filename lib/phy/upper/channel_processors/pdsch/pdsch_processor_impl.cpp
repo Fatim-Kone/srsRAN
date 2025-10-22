@@ -24,8 +24,16 @@
 #include "pdsch_processor_helpers.h"
 #include "pdsch_processor_validator_impl.h"
 #include "srsran/srsvec/bit.h"
+#include <rte_cycles.h>
+#include <iostream>
+
 
 using namespace srsran;
+
+// static uint64_t get_current_time()
+// {
+//   return rte_rdtsc_precise();
+// }
 
 /// \brief Looks at the output of the validator and, if unsuccessful, fills \c msg with the error message.
 ///
@@ -65,19 +73,29 @@ void pdsch_processor_impl::process(resource_grid_writer&                        
   // Calculate the number of resource elements used to map PDSCH on the grid. Common for all codewords.
   unsigned nof_re_pdsch = pdsch_compute_nof_data_re(pdu);
 
+  //uint64_t total_encoding_time = 0;
   // Prepare encoded codewords.
   static_vector<bit_buffer, pdsch_constants::MAX_NOF_CODEWORDS> codewords;
 
   // Encode each codeword.
+  //printf("Number of codewords %d\n", nof_codewords);
   for (unsigned codeword_id = 0; codeword_id != nof_codewords; ++codeword_id) {
     unsigned          nof_layers_cw = (codeword_id == 0) ? nof_layers_cw0 : nof_layers_cw1;
+    //uint64_t start_time = get_current_time();
     const bit_buffer& codeword = encode(data[codeword_id].get_buffer(), codeword_id, nof_layers_cw, nof_re_pdsch, pdu);
-
+    //uint64_t op_time = get_current_time() - start_time;
+    //total_encoding_time += op_time;
     codewords.emplace_back(codeword);
   }
 
+  //fmt::print("{}\n", (total_encoding_time * 1e6) / 2000000000);
+
   // Modulate codewords.
+  //uint64_t start_time = get_current_time();
   modulate(grid, codewords, pdu);
+  //uint64_t modulate_time = get_current_time() - start_time;
+
+  //fmt::print("{}\n", (modulate_time * 1e6) / 2000000000);
 
   if (pdu.ptrs) {
     // Prepare PT-RS configuration and generate.

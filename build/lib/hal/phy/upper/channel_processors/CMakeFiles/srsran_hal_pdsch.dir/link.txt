@@ -1,0 +1,2 @@
+/usr/bin/ar qc libsrsran_hal_pdsch.a CMakeFiles/srsran_hal_pdsch.dir/hw_accelerator_factories.cpp.o CMakeFiles/srsran_hal_pdsch.dir/hw_accelerator_pdsch_enc_impl.cpp.o CMakeFiles/srsran_hal_pdsch.dir/hw_accelerator_pdsch_enc_acc100_impl.cpp.o
+/usr/bin/ranlib libsrsran_hal_pdsch.a

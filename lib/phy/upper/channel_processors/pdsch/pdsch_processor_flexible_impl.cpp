@@ -177,7 +177,6 @@ void pdsch_processor_flexible_impl::initialize_new_transmission(
 
   // The processing of this transmission is synchronous if the number of codeblocks is smaller than the batch size.
   async_proc = (nof_cb > max_nof_codeblocks_per_batch);
-
   if (async_proc) {
     units::bits bits_per_symbol(get_bits_per_symbol(modulation));
 
@@ -269,7 +268,7 @@ void pdsch_processor_flexible_impl::sync_pdsch_cb_processing()
   // Configure new transmission. Codeword index, start CB index and CB batch length are fixed.
   resource_grid_mapper::symbol_buffer& grid_buffer =
       block_processor->configure_new_transmission(data.get_buffer(), 0, config, *segment_buffer, 0, nof_cb);
-
+  
   // Map PDSCH.
   mapper->map(*grid, grid_buffer, allocation, reserved, precoding);
 

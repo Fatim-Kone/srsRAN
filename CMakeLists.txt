@@ -82,16 +82,16 @@ option(ENABLE_ZEROMQ         "Enable ZeroMQ"                              OFF)
 option(ENABLE_FFTW           "Enable FFTW"                                ON)
 option(ENABLE_MKL            "Enable Intel MKL"                           ON)
 option(ENABLE_ARMPL          "Enable ARM performance library"             ON)
-option(ENABLE_DPDK           "Enable DPDK"                                OFF)
+option(ENABLE_DPDK           "Enable DPDK"                                ON)
 option(ENABLE_LIBNUMA        "Enable LibNUMA"                             OFF)
 option(ENABLE_EXPORT         "Enable PIC and export libraries"            OFF)
 option(ENABLE_TRX_DRIVER     "Enable Amarisoft TRX driver library"        OFF)
 option(ENABLE_PLUGINS        "Compile plugins in the plugin folder"       ON)
-option(BUILD_TESTING         "Compile tests"                              OFF)
+option(BUILD_TESTING         "Compile tests"                              ON)
 option(ENABLE_GPROF          "Enable gprof"                               OFF)
 option(FORCE_DEBUG_INFO      "Add debug information to Release build"     OFF)
 if (BUILD_TESTING)
-option(USE_PHY_TESTVECTORS   "Enable testvector PHY tests"                OFF)
+	option(USE_PHY_TESTVECTORS   "Enable testvector PHY tests"                OFF)
 endif(BUILD_TESTING)
 
 # Set linker options and default value.
@@ -392,7 +392,7 @@ if (ENABLE_MKL AND ${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
             DOWNLOAD_LOCATION  "https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html"
             SUPPLIER           "Intel Corporation"
             LICENSE            "Apache-2.0"
-            VERSION            ${MKL_VERSION}
+	    VERSION            ${MKL_VERSION}
         )
     endif(MKL_FOUND)
 endif (ENABLE_MKL AND ${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")

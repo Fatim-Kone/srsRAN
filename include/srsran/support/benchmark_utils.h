@@ -225,6 +225,16 @@ public:
     }
   }
 
+  void print_median_latency(std::string units = "nanoseconds", double scaling = 1.0) const
+  {
+    if (benchmark_results.empty()) {
+      return;
+    }
+    for (const benchmark_result& result : benchmark_results) {
+        fmt::print("{}\n", result.measurements[static_cast<size_t>(nof_repetitions * 0.5)] * scaling);
+    }
+  }
+
   /// Prints the throughput measurements in millions of elements per seconds.
   /// \param[in] units Units counted in the throughput (ie. bits, symbols, etc.).
   void print_percentiles_throughput(const std::string& units, double scaling = 1.0) const

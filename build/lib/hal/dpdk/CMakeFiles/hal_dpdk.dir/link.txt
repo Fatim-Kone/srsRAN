@@ -1,0 +1,2 @@
+/usr/bin/ar qc libhal_dpdk.a CMakeFiles/hal_dpdk.dir/dpdk_eal_factory.cpp.o CMakeFiles/hal_dpdk.dir/dpdk.cpp.o CMakeFiles/hal_dpdk.dir/mbuf_pool_factory.cpp.o
+/usr/bin/ranlib libhal_dpdk.a

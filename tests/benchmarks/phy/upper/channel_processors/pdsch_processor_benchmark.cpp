@@ -40,8 +40,12 @@
 #include "srsran/hal/phy/upper/channel_processors/hw_accelerator_factories.h"
 #include "srsran/hal/phy/upper/channel_processors/hw_accelerator_pdsch_enc_factory.h"
 #endif // HWACC_PDSCH_ENABLED
+#include <rte_eal.h>
+#include <rte_lcore.h>
+#include <rte_mbuf.h>
 #include <condition_variable>
 #include <getopt.h>
+#include <iostream>
 #include <mutex>
 #include <random>
 
@@ -104,6 +108,7 @@ static benchmark_modes                    benchmark_mode              = benchmar
 static std::string                        tracing_filename            = "";
 static dmrs_type                          dmrs                        = dmrs_type::TYPE1;
 static unsigned                           nof_cdm_groups_without_data = 2;
+static std::string                        output_mode                 = "";                       
 static bounded_bitset<MAX_NSYMB_PER_SLOT> dmrs_symbol_mask =
     {false, false, true, false, false, false, false, true, false, false, false, true, false, false};
 static unsigned                                                 nof_pdsch_processor_concurrent_threads = 0;
@@ -357,7 +362,7 @@ static std::string capture_eal_args(int* argc, char*** argv)
 static int parse_args(int argc, char** argv)
 {
   int opt = 0;
-  while ((opt = getopt(argc, argv, "R:T:B:D:P:m:t:o:wxyz:h")) != -1) {
+  while ((opt = getopt(argc, argv, "R:T:B:D:P:m:t:o:Swxyz:h")) != -1) {
     switch (opt) {
       case 'R':
         nof_repetitions = std::strtol(optarg, nullptr, 10);
@@ -406,6 +411,9 @@ static int parse_args(int argc, char** argv)
         break;
       case 'o':
         tracing_filename = std::string(optarg);
+        break;
+      case 'S':
+        output_mode = "script";
         break;
 #ifdef HWACC_PDSCH_ENABLED
       case 'w':
@@ -663,7 +671,7 @@ static pdsch_processor_factory& get_processor_factory()
     // Create PDSCH encoder factory and generic PDSCH processor.
     pdsch_enc_factory = create_pdsch_encoder_factory(crc_calc_factory);
     TESTASSERT(pdsch_enc_factory);
-
+    printf("Creating pdsch_processor_factory_sw");
     pdsch_proc_factory = create_pdsch_processor_factory_sw(
         pdsch_enc_factory, pdsch_mod_factory, dmrs_pdsch_gen_factory, ptrs_pdsch_gen_factory);
     TESTASSERT(pdsch_proc_factory);
@@ -684,10 +692,12 @@ static pdsch_processor_factory& get_processor_factory()
   } else {
     std::shared_ptr<hal::hw_accelerator_pdsch_enc_factory> hw_encoder_factory =
         create_hw_accelerator_pdsch_enc_factory();
+        printf("Created HWACC Encoder\n");
     TESTASSERT(hw_encoder_factory, "Failed to create a HW acceleration encoder factory.");
 
     block_processor_factory =
         create_pdsch_block_processor_factory_hw(hw_encoder_factory, prg_factory, chan_modulation_factory);
+        printf("Created block processor factory\n");
   }
   TESTASSERT(block_processor_factory, "Failed to create a PDSCH block processor factory.");
 
@@ -752,8 +762,14 @@ static bounded_unique_object_pool<resource_grid> create_resource_grid_pool()
   return bounded_unique_object_pool<resource_grid>(grids);
 }
 
+// static uint64_t get_current_time()
+// {
+//   return rte_rdtsc_precise();
+// }
+
 int main(int argc, char** argv)
 {
+
   // Prepare logging for only errors.
   srslog::init();
   srslog::fetch_basic_logger("PHY").set_level(srslog::basic_levels::warning);
@@ -763,6 +779,7 @@ int main(int argc, char** argv)
 #ifdef HWACC_PDSCH_ENABLED
   // Separate EAL and non-EAL arguments.
   eal_arguments = capture_eal_args(&argc, &argv);
+  fmt::print("EAL Args {}\n", eal_arguments);
 #endif // HWACC_PDSCH_ENABLED
 
   int ret = parse_args(argc, argv);
@@ -784,12 +801,15 @@ int main(int argc, char** argv)
     srslog::basic_logger& logger = srslog::fetch_basic_logger("EAL", false);
     logger.set_level(hal_log_level);
     dpdk_interface = dpdk::create_dpdk_eal(eal_arguments, logger);
+    printf("Post EAL lcores total: %u  main: %u\n",
+       rte_lcore_count(), rte_get_main_lcore());
+
     TESTASSERT(dpdk_interface, "Failed to open DPDK EAL with arguments.");
   }
 #endif // HWACC_PDSCH_ENABLED
 
   // Inform of the benchmark configuration.
-  if (benchmark_mode != benchmark_modes::silent) {
+  if (benchmark_mode != benchmark_modes::silent && output_mode != "script") {
     std::string hwacc_verbose = "";
     if (ldpc_encoder_type == "acc100") {
       hwacc_verbose = fmt::format(" ({} VFs)", nof_threads);
@@ -814,7 +834,6 @@ int main(int argc, char** argv)
 
   // Create processor.
   std::unique_ptr<pdsch_processor> proc = create_processor();
-
   // Create resource grids.
   bounded_unique_object_pool<resource_grid> grids = create_resource_grid_pool();
 
@@ -825,7 +844,11 @@ int main(int argc, char** argv)
   // Prepare PDSCH processor notifiers.
   std::vector<pdsch_processor_notifier_spy> notifiers(nof_threads);
 
+  //fmt::print("START\n");
+  //int case_index = 0;
+  std::vector<std::atomic<int>> thread_active_count(nof_threads);
   for (const test_case_type& test_case : test_case_set) {
+    //fmt::print("Test Case Start\n");
     // Get the PDSCH configuration.
     pdsch_processor::pdu_t config = std::get<0>(test_case);
 
@@ -858,69 +881,125 @@ int main(int argc, char** argv)
                    peak_throughput_Mbps);
 
     std::atomic<unsigned> completion_counter = 0;
-
+    
     // Create benchmark routine.
     auto benchmark_task =
-        [&notifiers, &grids, &data, &config, &proc, &completion_counter]() noexcept SRSRAN_RTSAN_NONBLOCKING {
+        [&notifiers, &grids, &data, &config, &proc, &completion_counter, &thread_active_count]() noexcept SRSRAN_RTSAN_NONBLOCKING {
           // Reset counter.
           completion_counter = 0;
+          if (ldpc_encoder_type == "acc100"){
+            std::vector<unsigned> lcores;
+            unsigned lcore_id;
+            RTE_LCORE_FOREACH_WORKER(lcore_id) {
+                lcores.push_back(lcore_id);
+            }
+            
+            report_fatal_error_if_not(lcores.size() >= nof_threads, "Not enough lcores for all threads");
+            struct context {
+                pdsch_processor_notifier_spy* notifier;
+                bounded_unique_object_pool<resource_grid>* grids;
+                span<const uint8_t>* data;
+                pdsch_processor::pdu_t* config;
+                pdsch_processor* proc;
+                std::atomic<unsigned>* completion_counter;
+                std::atomic<int>* thread_active_count;
+            };
 
-          // Spawn tasks for each therad.
-          for (unsigned i_thread = 0; i_thread != nof_threads; ++i_thread) {
-            // Select notifier.
-            pdsch_processor_notifier_spy& notifier = notifiers[i_thread];
+            auto benchmark_lcores = [](void* arg) -> int {
+              context* ctx = static_cast<context*>(arg);
+              auto grid = ctx->grids->get();
+              for (unsigned i_pdsch = 0; i_pdsch != batch_size_per_thread; ++i_pdsch){
+                ctx->notifier->reset();
+                ctx->proc->process(grid->get_writer(), *ctx->notifier, {shared_transport_block(*ctx->data)}, *ctx->config);
+                (*ctx->thread_active_count)++;
+                ctx->notifier->wait_for_finished();
+              }
 
-            bool success = pdsch_executor->execute(
-                [&notifier, &grids, &data, &config, &proc, &completion_counter]() noexcept SRSRAN_RTSAN_NONBLOCKING {
-                  // Get a resource grid.
-                  auto grid = grids.get();
-                  report_fatal_error_if_not(grid, "Failed to retrieve resource grid.");
+              (*ctx->completion_counter)++;
+              return 0;
+            };
 
-                  // Repeat PDSCH transmission.
-                  for (unsigned i_pdsch = 0; i_pdsch != batch_size_per_thread; ++i_pdsch) {
-                    // Reset notifier.
-                    notifier.reset();
+            std::vector<context> contexts(nof_threads);
+            for (unsigned i_thread = 0; i_thread < nof_threads; ++i_thread) {
+              contexts[i_thread] = context{
+                      &notifiers[i_thread],
+                      &grids,
+                      &data,
+                      &config,
+                      proc.get(),
+                      &completion_counter,
+                      &thread_active_count[i_thread]};
 
-                    // Process PDSCH transmission.
-                    proc->process(grid->get_writer(), notifier, {shared_transport_block(data)}, config);
+              int res = rte_eal_remote_launch(benchmark_lcores, &contexts[i_thread], lcores[i_thread]);
+              report_fatal_error_if_not(res == 0, "Failed to launch task on lcore");
+            }
 
-                    // Wait for notifier before starting next PDSCH transmission.
-                    notifier.wait_for_finished();
-                  }
+            for (unsigned i_thread = 0; i_thread < nof_threads; ++i_thread) {
+                rte_eal_wait_lcore(lcores[i_thread]);
+            }
 
-                  // Count the completion of the thread.
-                  ++completion_counter;
-                });
+          } else {
+            // Spawn tasks for each therad.
+            for (unsigned i_thread = 0; i_thread != nof_threads; ++i_thread) {
+              // Select notifier.
+              pdsch_processor_notifier_spy& notifier = notifiers[i_thread];
 
-            report_fatal_error_if_not(success, "Failed to execute.");
-          }
+              bool success = pdsch_executor->execute(
+                  [&notifier, &grids, &data, &config, &proc, &completion_counter, &thread_active_count, i_thread]() noexcept SRSRAN_RTSAN_NONBLOCKING {
+                    // Get a resource grid.
+                    auto grid = grids.get();
+                    report_fatal_error_if_not(grid, "Failed to retrieve resource grid.");                  
 
-          // Wait for completion.
-          while (completion_counter != nof_threads) {
-            std::this_thread::sleep_for(sleep_duration);
-          }
-        };
+                    // Repeat PDSCH transmission.
+                    for (unsigned i_pdsch = 0; i_pdsch != batch_size_per_thread; ++i_pdsch) {
+                      // Reset notifier.
+                      notifier.reset();
+
+                      // Process PDSCH transmission.
+                      proc->process(grid->get_writer(), notifier, {shared_transport_block(data)}, config);
+                      thread_active_count[i_thread]++;
+                  
+                      // Wait for notifier before starting next PDSCH transmission.
+                      notifier.wait_for_finished();
+                    }
+
+                    // Count the completion of the thread.
+                    ++completion_counter;
+                  });
+
+              report_fatal_error_if_not(success, "Failed to execute.");
+            }
+
+            // Wait for completion.
+            while (completion_counter != nof_threads) {
+              std::this_thread::sleep_for(sleep_duration);
+            }
+        }
+      };
 
     // Run the benchmark.
     perf_meas.new_measure(to_string(meas_description), nof_threads * batch_size_per_thread * tbs, benchmark_task);
   }
 
-  // Print latency.
-  if ((benchmark_mode == benchmark_modes::latency) || (benchmark_mode == benchmark_modes::all)) {
-    fmt::print("\n--- Average latency ---\n");
-    perf_meas.print_percentiles_time("microseconds", 1e-3 / static_cast<double>(nof_threads * batch_size_per_thread));
-  }
+  if (benchmark_mode == benchmark_modes::latency && output_mode == "script") {
+    perf_meas.print_median_latency("microseconds", 1e-3 / static_cast<double>(nof_threads * batch_size_per_thread));
+  } else {
+     // Print latency.
+    if ((benchmark_mode == benchmark_modes::latency) || (benchmark_mode == benchmark_modes::all)) {
+      fmt::print("\n--- Average latency ---\n");
+      perf_meas.print_percentiles_time("microseconds", 1e-3 / static_cast<double>(nof_threads * batch_size_per_thread));
+    }
+    // Print total aggregated throughput.
+    if ((benchmark_mode == benchmark_modes::throughput_total) || (benchmark_mode == benchmark_modes::all)) {
+      fmt::print("\n--- Total throughput ---\n");
+      perf_meas.print_percentiles_throughput("bits");
+    }
 
-  // Print total aggregated throughput.
-  if ((benchmark_mode == benchmark_modes::throughput_total) || (benchmark_mode == benchmark_modes::all)) {
-    fmt::print("\n--- Total throughput ---\n");
-    perf_meas.print_percentiles_throughput("bits");
-  }
-
-  // Print average throughput per thread.
-  if ((benchmark_mode == benchmark_modes::throughput_thread) || (benchmark_mode == benchmark_modes::all)) {
-    fmt::print("\n--- Thread throughput ---\n");
-    perf_meas.print_percentiles_throughput("bits", 1.0 / static_cast<double>(nof_threads));
+    // Print average throughput per thread.
+    if ((benchmark_mode == benchmark_modes::throughput_thread) || (benchmark_mode == benchmark_modes::all)) {
+      fmt::print("\n--- Thread throughput ---\n");
+      perf_meas.print_percentiles_throughput("bits", 1.0 / static_cast<double>(nof_threads));
+    }
   }
 
   if (cb_worker_pool) {
@@ -936,4 +1015,5 @@ int main(int argc, char** argv)
   }
 
   return 0;
+
 }

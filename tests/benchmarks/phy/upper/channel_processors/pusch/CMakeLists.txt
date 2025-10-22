@@ -50,5 +50,8 @@ if (ENABLE_PUSCH_HWACC)
     list(APPEND PUSCH_PROCESSOR_LIBRARIES srsran_hal_pusch)
 endif (ENABLE_PUSCH_HWACC)
 
-target_link_libraries(pusch_processor_benchmark ${PUSCH_PROCESSOR_LIBRARIES})
+
+target_link_libraries(pusch_processor_benchmark
+		${PUSCH_PROCESSOR_LIBRARIES}
+)
 add_test(pusch_processor_benchmark pusch_processor_benchmark -m silent -R 1 -B 1 -T 2 -P scs15_5MHz_qpsk_rv0_1port_1layer)

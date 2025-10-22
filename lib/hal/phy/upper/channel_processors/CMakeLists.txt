@@ -27,7 +27,10 @@ if (ENABLE_PDSCH_HWACC)
 endif ()
 
 
-add_library(srsran_hal_pdsch STATIC hw_accelerator_factories.cpp)
+add_library(srsran_hal_pdsch STATIC hw_accelerator_factories.cpp
+				    hw_accelerator_pdsch_enc_impl.cpp
+                                    hw_accelerator_pdsch_enc_acc100_impl.cpp
+	)
 
 set_source_files_properties(hw_accelerator_factories.cpp PROPERTIES COMPILE_DEFINITIONS "${HWACC_FACTORIES_DEFINITIONS}")
 

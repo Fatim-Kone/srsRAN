@@ -64,6 +64,7 @@ pdsch_block_processor_hw_impl::configure_new_transmission(span<const uint8_t>   
 
 void pdsch_block_processor_hw_impl::enqueue_codeblocks()
 {
+  printf("Enqueuing codeblocks");
   // Reserve a hardware-queue for the current encoding operation.
   if (next_i_cb_enq == start_i_cb) {
     encoder->reserve_queue();
@@ -99,6 +100,7 @@ void pdsch_block_processor_hw_impl::enqueue_codeblocks()
 
 bool pdsch_block_processor_hw_impl::dequeue_codeblock(bool force_dequeue)
 {
+  printf("Enqueuing codeblocks");
   // Rate Matching output length.
   unsigned rm_length = segment_buffer->get_rm_length(next_i_cb_deq);
 
@@ -136,6 +138,7 @@ bool pdsch_block_processor_hw_impl::dequeue_codeblock(bool force_dequeue)
 
 span<const ci8_t> pdsch_block_processor_hw_impl::pop_symbols(unsigned block_size)
 {
+  printf("Processing new codeblocks");
   // Process a new codeblock if the buffer with codeblock symbols is empty.
   if (codeblock_symbols.empty()) {
     // Process one CB, while enqueueing as many CBs as possible, until all CBs are processed.

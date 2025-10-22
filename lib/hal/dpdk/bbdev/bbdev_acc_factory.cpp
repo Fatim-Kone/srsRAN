@@ -21,18 +21,22 @@
  */
 
 #include "srsran/hal/dpdk/bbdev/bbdev_acc_factory.h"
+#include "bbdev.h"
+
 
 using namespace srsran;
 using namespace dpdk;
 
-#ifndef SRSRAN_HAS_ENTERPRISE
-
 std::shared_ptr<bbdev_acc> srsran::dpdk::create_bbdev_acc(const bbdev_acc_configuration& cfg,
                                                           srslog::basic_logger&          logger)
 {
-  logger.error("[bbdev] bbdev accelerator creation failed. Cause: hardware-acceleration is not supported.");
+  // bbdev device start procedure.
+  expected<::rte_bbdev_info> info = bbdev_start(cfg, logger);
+  //fmt::print("The total number of usable devices {}\n", rte_bbdev_count());
+  if (not info.has_value()) {
+    return nullptr;
+  }
 
-  return nullptr;
+  return std::make_shared<bbdev_acc>(cfg, info.value(), logger);
 }
 
-#endif // SRSRAN_HAS_ENTERPRISE

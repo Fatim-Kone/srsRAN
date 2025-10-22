@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2021-2025 Software Radio Systems Limited
+ * Copyright 2021-2024 Software Radio Systems Limited
  *
  * This file is part of srsRAN.
  *
@@ -27,7 +27,6 @@
 /// one.
 
 #include "srsran/phy/upper/channel_processors/pdsch/factories.h"
-#include "srsran/phy/upper/channel_processors/pdsch/pdsch_encoder.h"
 #include "srsran/ran/pdsch/pdsch_constants.h"
 #include "srsran/ran/sch/tbs_calculator.h"
 #include "srsran/support/srsran_test.h"
@@ -42,6 +41,7 @@
 #endif // DPDK_FOUND
 #include <getopt.h>
 #include <random>
+#include <iostream>
 
 /// \cond
 using namespace srsran;
@@ -157,7 +157,7 @@ static int parse_args(int argc, char** argv)
       case 'h':
       default:
         usage(argv[0]);
-        std::exit(0);
+        exit(0);
     }
   }
   return 0;
@@ -211,7 +211,7 @@ static std::shared_ptr<hal::hw_accelerator_pdsch_enc_factory> create_hw_accelera
   std::shared_ptr<dpdk::bbdev_acc> bbdev_accelerator = create_bbdev_acc(bbdev_config, logger);
   TESTASSERT(bbdev_accelerator);
 
-  // Set the PDSCH encoder hardware-accelerator factory configuration for the ACC100.
+  // Set the hardware-accelerator configuration.
   hal::bbdev_hwacc_pdsch_enc_factory_configuration hw_encoder_config;
   hw_encoder_config.acc_type          = "acc100";
   hw_encoder_config.bbdev_accelerator = bbdev_accelerator;
@@ -220,6 +220,7 @@ static std::shared_ptr<hal::hw_accelerator_pdsch_enc_factory> create_hw_accelera
   hw_encoder_config.dedicated_queue   = dedicated_queue;
 
   // ACC100 hardware-accelerator implementation.
+  //return create_hw_accelerator_pdsch_enc_factory(hw_encoder_config);
   return srsran::hal::create_bbdev_pdsch_enc_acc_factory(hw_encoder_config);
 #else  // DPDK_FOUND
   return nullptr;
@@ -394,7 +395,7 @@ int main(int argc, char** argv)
     fmt::print(
         "PDSCH RB={:<3} Mod={:<2} tbs={:<8}: latency gain {:<3.2f}%% (generic {:<10.2f} us, {:<5} {:<10.2f} us)\n",
         nof_prb,
-        fmt::underlying(cfg.mod),
+        to_string(cfg.mod),
         tbs,
         perf_gain,
         gen_lat,
