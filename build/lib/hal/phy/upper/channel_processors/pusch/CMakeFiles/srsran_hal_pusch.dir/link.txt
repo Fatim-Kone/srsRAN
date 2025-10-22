@@ -1,2 +1,0 @@
-/usr/bin/ar qc libsrsran_hal_pusch.a CMakeFiles/srsran_hal_pusch.dir/hw_accelerator_factories.cpp.o CMakeFiles/srsran_hal_pusch.dir/ext_harq_buffer_context_repository_factory.cpp.o
-/usr/bin/ranlib libsrsran_hal_pusch.a

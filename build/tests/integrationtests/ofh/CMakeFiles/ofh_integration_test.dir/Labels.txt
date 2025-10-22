@@ -1,4 +1,0 @@
-# Directory labels
- ofh
-# Source files and their labels
-/home/netsys/srsRAN_Project/tests/integrationtests/ofh/ofh_integration_test.cpp
