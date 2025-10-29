@@ -141,12 +141,17 @@ static constexpr bool                                           compensate_cfo  
 static unsigned                                                 nof_pusch_decoder_threads = 0;
 static std::unique_ptr<task_worker_pool<queue_policy>>          worker_pool               = nullptr;
 static std::unique_ptr<task_worker_pool_executor<queue_policy>> executor                  = nullptr;
+static std::unique_ptr<task_worker_pool<queue_policy>>          pusch_worker_pool = nullptr;
+static std::unique_ptr<task_worker_pool_executor<queue_policy>> pusch_executor    = nullptr;
 static inline_task_executor                                     ch_est_executor;
+
 
 // Thread shared variables.
 static std::atomic<bool>     thread_quit   = {};
 static std::atomic<int>      pending_count = {0};
 static std::atomic<unsigned> finish_count  = {0};
+
+static constexpr auto sleep_duration = std::chrono::microseconds(10);
 
 #ifdef HWACC_PUSCH_ENABLED
 static bool                 dedicated_queue  = true;
@@ -675,64 +680,64 @@ static std::tuple<std::unique_ptr<pusch_processor>, std::unique_ptr<pusch_pdu_va
   return std::make_tuple(std::move(processor), std::move(validator));
 }
 
-static void thread_process(pusch_processor&              proc,
-                           const pusch_processor::pdu_t& config,
-                           unsigned                      tbs,
-                           const resource_grid_reader&   grid)
-{
-  // Compute the number of codeblocks.
-  unsigned nof_codeblocks = ldpc::compute_nof_codeblocks(units::bits(tbs), config.codeword.value().ldpc_base_graph);
+// static void thread_process(pusch_processor&              proc,
+//                            const pusch_processor::pdu_t& config,
+//                            unsigned                      tbs,
+//                            const resource_grid_reader&   grid)
+// {
+//   // Compute the number of codeblocks.
+//   unsigned nof_codeblocks = ldpc::compute_nof_codeblocks(units::bits(tbs), config.codeword.value().ldpc_base_graph);
 
-  // Buffer pool configuration.
-  rx_buffer_pool_config buffer_pool_config = {};
-  buffer_pool_config.nof_buffers           = 1;
-  buffer_pool_config.nof_codeblocks        = nof_codeblocks;
-  buffer_pool_config.max_codeblock_size    = ldpc::MAX_CODEBLOCK_SIZE;
-  buffer_pool_config.expire_timeout_slots =
-      100 * get_nof_slots_per_subframe(to_subcarrier_spacing(config.slot.numerology()));
-  buffer_pool_config.external_soft_bits = false;
+//   // Buffer pool configuration.
+//   rx_buffer_pool_config buffer_pool_config = {};
+//   buffer_pool_config.nof_buffers           = 1;
+//   buffer_pool_config.nof_codeblocks        = nof_codeblocks;
+//   buffer_pool_config.max_codeblock_size    = ldpc::MAX_CODEBLOCK_SIZE;
+//   buffer_pool_config.expire_timeout_slots =
+//       100 * get_nof_slots_per_subframe(to_subcarrier_spacing(config.slot.numerology()));
+//   buffer_pool_config.external_soft_bits = false;
 
-  trx_buffer_identifier buffer_id = trx_buffer_identifier(config.rnti, 0);
+//   trx_buffer_identifier buffer_id = trx_buffer_identifier(config.rnti, 0);
 
-  // Create buffer pool.
-  std::unique_ptr<rx_buffer_pool_controller> buffer_pool = create_rx_buffer_pool(buffer_pool_config);
+//   // Create buffer pool.
+//   std::unique_ptr<rx_buffer_pool_controller> buffer_pool = create_rx_buffer_pool(buffer_pool_config);
 
-  // Prepare receive data buffer.
-  std::vector<uint8_t> data(tbs / 8);
+//   // Prepare receive data buffer.
+//   std::vector<uint8_t> data(tbs / 8);
 
-  while (!thread_quit) {
-    // If the pending count is equal to or lower than zero, wait for a new start.
-    while (pending_count.fetch_sub(1) <= 0) {
-      // Wait for pending to non-negative.
-      while (pending_count.load() <= 0) {
-        // Sleep.
-        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+//   while (!thread_quit) {
+//     // If the pending count is equal to or lower than zero, wait for a new start.
+//     while (pending_count.fetch_sub(1) <= 0) {
+//       // Wait for pending to non-negative.
+//       while (pending_count.load() <= 0) {
+//         // Sleep.
+//         std::this_thread::sleep_for(std::chrono::nanoseconds(100));
 
-        // Quit if signaled.
-        if (thread_quit) {
-          return;
-        }
-      }
-    }
+//         // Quit if signaled.
+//         if (thread_quit) {
+//           return;
+//         }
+//       }
+//     }
 
-    // Prepare notifier.
-    pusch_processor_result_notifier_adaptor result_notifier;
+//     // Prepare notifier.
+//     pusch_processor_result_notifier_adaptor result_notifier;
 
-    // Reserve buffer.
-    unique_rx_buffer rm_buffer = buffer_pool->get_pool().reserve(config.slot, buffer_id, nof_codeblocks, true);
+//     // Reserve buffer.
+//     unique_rx_buffer rm_buffer = buffer_pool->get_pool().reserve(config.slot, buffer_id, nof_codeblocks, true);
 
-    // Process PDU.
-    [&]() noexcept SRSRAN_RTSAN_NONBLOCKING {
-      proc.process(data, std::move(rm_buffer), result_notifier, grid, config);
-    }();
+//     // Process PDU.
+//     [&]() noexcept SRSRAN_RTSAN_NONBLOCKING {
+//       proc.process(data, std::move(rm_buffer), result_notifier, grid, config);
+//     }();
+    
+//     // Wait for finish the task.
+//     result_notifier.wait_for_completion();
 
-    // Wait for finish the task.
-    result_notifier.wait_for_completion();
-
-    // Notify finish count.
-    ++finish_count;
-  }
-}
+//     // Notify finish count.
+//     ++finish_count;
+//   }
+// }
 
 // Creates a resource grid.
 static std::unique_ptr<resource_grid> create_resource_grid(unsigned nof_ports, unsigned nof_symbols, unsigned nof_subc)
@@ -830,6 +835,25 @@ int main(int argc, char** argv)
   std::unique_ptr<pusch_pdu_validator> validator;
   std::tie(processor, validator) = create_processor();
 
+  // Create concurrent PDSCH processing executors.
+  pusch_worker_pool = std::make_unique<task_worker_pool<queue_policy>>("worker", nof_threads, 1024, sleep_duration);
+  pusch_executor    = std::make_unique<task_worker_pool_executor<queue_policy>>(*pusch_worker_pool);
+
+  // Prepare PUSCH processor notifiers.
+  std::vector<pusch_processor_result_notifier_adaptor> notifiers(nof_threads);
+  std::vector<std::atomic<int>> thread_active_count(nof_threads);
+
+  struct context {
+        pusch_processor_result_notifier_adaptor* notifier;
+        const resource_grid_reader* grid;
+        unsigned* tbs;
+        const pusch_processor::pdu_t* config;
+        pusch_processor* proc;
+        std::atomic<unsigned>* completion_counter;
+        std::atomic<int>* thread_active_count;
+    };
+
+
   // Generate the test cases.
   std::vector<test_case_type> test_case_set = generate_test_cases(selected_profile);
 
@@ -838,31 +862,8 @@ int main(int argc, char** argv)
     const pusch_processor::pdu_t& config = std::get<0>(test_case);
     // Get the TBS in bits.
     unsigned tbs = std::get<1>(test_case);
-
     // Make sure the configuration is valid.
     TESTASSERT(validator->is_valid(config));
-
-    // Reset finish counter.
-    finish_count  = 0;
-    pending_count = 0;
-    thread_quit   = false;
-
-    // Prepare threads for the current case.
-    std::vector<unique_thread> threads(nof_threads);
-    for (unsigned thread_id = 0; thread_id != nof_threads; ++thread_id) {
-      // Select thread.
-      unique_thread& thread = threads[thread_id];
-
-      // Create thread.
-      thread = unique_thread("thread_" + std::to_string(thread_id), [&proc = *processor, &config, &tbs, &grid] {
-        thread_process(proc, config, tbs, grid.get()->get_reader());
-      });
-    }
-
-    // Wait for finish thread init.
-    while (pending_count.load() != -static_cast<int>(nof_threads)) {
-      std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-    }
 
     // Calculate the peak throughput, considering that the number of bits is for a slot.
     double slot_duration_us     = 1e3 / static_cast<double>(pow2(config.slot.numerology()));
@@ -879,23 +880,143 @@ int main(int argc, char** argv)
                    config.nof_tx_layers,
                    peak_throughput_Mbps);
 
+    // Reset finish counter.
+    //finish_count  = 0;
+    //pending_count = 0;
+    //thread_quit   = false;
+    std::atomic<unsigned> completion_counter = 0;
+    std::vector<unique_thread> threads(nof_threads);
+
+    auto benchmark_task =
+        [&notifiers, &grid, &tbs, &config, &processor, &completion_counter, &thread_active_count]() noexcept SRSRAN_RTSAN_NONBLOCKING {
+          // Reset counter.
+          completion_counter = 0;
+          if (ldpc_decoder_type == "acc100"){
+            std::vector<unsigned> lcores;
+            unsigned lcore_id;
+            RTE_LCORE_FOREACH_WORKER(lcore_id) {
+                lcores.push_back(lcore_id);
+            }
+            report_fatal_error_if_not(lcores.size() >= nof_threads, "Not enough lcores for all threads");
+
+             auto benchmark_lcores = [](void* arg) -> int {
+              context* ctx = static_cast<context*>(arg);
+              // Compute the number of codeblocks.
+              unsigned nof_codeblocks = ldpc::compute_nof_codeblocks(units::bits(*ctx->tbs), (*ctx->config).codeword.value().ldpc_base_graph);
+
+              // Buffer pool configuration.
+              rx_buffer_pool_config buffer_pool_config = {};
+              buffer_pool_config.nof_buffers           = 1;
+              buffer_pool_config.nof_codeblocks        = nof_codeblocks;
+              buffer_pool_config.max_codeblock_size    = ldpc::MAX_CODEBLOCK_SIZE;
+              buffer_pool_config.expire_timeout_slots =
+                  100 * get_nof_slots_per_subframe(to_subcarrier_spacing((*ctx->config).slot.numerology()));
+              buffer_pool_config.external_soft_bits = false;
+
+              trx_buffer_identifier buffer_id = trx_buffer_identifier((*ctx->config).rnti, 0);
+
+              // Create buffer pool.
+              std::unique_ptr<rx_buffer_pool_controller> buffer_pool = create_rx_buffer_pool(buffer_pool_config);
+
+              // Prepare receive data buffer.
+              std::vector<uint8_t> data(*ctx->tbs / 8);
+
+              // Repeat PUSCH transmission.
+              for (unsigned i_pusch = 0; i_pusch != batch_size_per_thread; ++i_pusch) {
+                data.clear();
+                data.resize(*ctx->tbs / 8);
+                // Reset notifier.
+                ctx->notifier->reset();
+                // Reserve buffer.
+                unique_rx_buffer rm_buffer = buffer_pool->get_pool().reserve((*ctx->config).slot, buffer_id, nof_codeblocks, true);
+                // Process PUSCH transmission.
+                ctx->proc->process(data, std::move(rm_buffer), *ctx->notifier, *ctx->grid, *ctx->config);
+                (*ctx->thread_active_count)++;
+                // Wait for notifier before starting next PUSCH transmission.
+                ctx->notifier->wait_for_completion();
+              }
+              // Count the completion of the thread.
+              ++(*ctx->completion_counter);
+              return 0;
+            };
+
+            std::vector<context> contexts(nof_threads);
+            for (unsigned i_thread = 0; i_thread < nof_threads; ++i_thread) {
+              contexts[i_thread] = context{
+                      &notifiers[i_thread],
+                      &grid.get()->get_reader(),
+                      &tbs,
+                      &config,
+                      processor.get(),
+                      &completion_counter,
+                      &thread_active_count[i_thread]};
+
+              int res = rte_eal_remote_launch(benchmark_lcores, &contexts[i_thread], lcores[i_thread]);
+              report_fatal_error_if_not(res == 0, "Failed to launch task on lcore");
+              }
+
+            for (unsigned i_thread = 0; i_thread < nof_threads; ++i_thread) {
+              rte_eal_wait_lcore(lcores[i_thread]);
+            }
+
+          } else {
+            // Spawn tasks for each therad.
+            for (unsigned i_thread = 0; i_thread != nof_threads; ++i_thread) {
+              // Select notifier.
+              pusch_processor_result_notifier_adaptor& notifier = notifiers[i_thread];
+
+              bool success = pusch_executor->execute(
+                  [&notifier, &tbs, &grid, &config, &proc = *processor, &completion_counter, &thread_active_count, i_thread]() noexcept SRSRAN_RTSAN_NONBLOCKING {
+                    // Compute the number of codeblocks.
+                    unsigned nof_codeblocks = ldpc::compute_nof_codeblocks(units::bits(tbs), config.codeword.value().ldpc_base_graph);
+
+                    // Buffer pool configuration.
+                    rx_buffer_pool_config buffer_pool_config = {};
+                    buffer_pool_config.nof_buffers           = 1;
+                    buffer_pool_config.nof_codeblocks        = nof_codeblocks;
+                    buffer_pool_config.max_codeblock_size    = ldpc::MAX_CODEBLOCK_SIZE;
+                    buffer_pool_config.expire_timeout_slots =
+                        100 * get_nof_slots_per_subframe(to_subcarrier_spacing(config.slot.numerology()));
+                    buffer_pool_config.external_soft_bits = false;
+
+                    trx_buffer_identifier buffer_id = trx_buffer_identifier(config.rnti, 0);
+
+                    // Create buffer pool.
+                    std::unique_ptr<rx_buffer_pool_controller> buffer_pool = create_rx_buffer_pool(buffer_pool_config);
+
+                    // Prepare receive data buffer.
+                    std::vector<uint8_t> data(tbs / 8);
+    
+                    // Repeat PUSCH transmission.
+                    for (unsigned i_pusch = 0; i_pusch != batch_size_per_thread; ++i_pusch) {
+                      // Reset notifier.
+                      notifier.reset();
+                      // Reserve buffer.
+                      unique_rx_buffer rm_buffer = buffer_pool->get_pool().reserve(config.slot, buffer_id, nof_codeblocks, true);
+                      // Process PUSCH transmission.
+                      proc.process(data, std::move(rm_buffer), notifier, grid.get()->get_reader(), config);
+                      thread_active_count[i_thread]++;
+                  
+                      // Wait for notifier before starting next PUSCH transmission.
+                      notifier.wait_for_completion();
+                    }
+
+                    // Count the completion of the thread.
+                    ++completion_counter;
+                  });
+
+              report_fatal_error_if_not(success, "Failed to execute.");
+            }
+
+            // Wait for completion.
+            while (completion_counter != nof_threads) {
+              std::this_thread::sleep_for(sleep_duration);
+            }
+          }
+        };
+
     // Run the benchmark.
-    perf_meas.new_measure(to_string(meas_description), nof_threads * batch_size_per_thread * tbs, []() mutable {
-      // Notify start.
-      finish_count  = 0;
-      pending_count = nof_threads * batch_size_per_thread;
-
-      // Wait for finish.
-      while (finish_count.load() != (nof_threads * batch_size_per_thread)) {
-        std::this_thread::sleep_for(std::chrono::nanoseconds(100));
-      }
-    });
-
-    thread_quit = true;
-
-    for (unique_thread& thread : threads) {
-      thread.join();
-    }
+    perf_meas.new_measure(to_string(meas_description), nof_threads * batch_size_per_thread * tbs, benchmark_task);
   }
 
   // Print latency.
@@ -919,6 +1040,11 @@ int main(int argc, char** argv)
   if (worker_pool) {
     worker_pool->stop();
   }
+
+  if (pusch_worker_pool) {
+    pusch_worker_pool->stop();
+  }
+
   processor.reset();
   validator.reset();
 

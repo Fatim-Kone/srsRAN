@@ -62,7 +62,7 @@ static bounded_bitset<MAX_NSYMB_PER_SLOT> dmrs_symbol_mask =
 
 #ifdef DPDK_FOUND
 static bool                 dedicated_queue = true;
-static bool                 force_local_harq       = false;
+static bool                 force_local_harq = false;
 static srslog::basic_levels hal_log_level   = srslog::basic_levels::error;
 static bool                 std_out_sink    = true;
 static std::string          eal_arguments   = "";
@@ -231,16 +231,17 @@ static std::shared_ptr<hal::hw_accelerator_pusch_dec_factory> create_hw_accelera
   unsigned nof_cbs                   = MAX_NOF_SEGMENTS;
   uint64_t acc100_ext_harq_buff_size = bbdev_accelerator->get_harq_buff_size_bytes();
   std::shared_ptr<hal::ext_harq_buffer_context_repository> harq_buffer_context =
-      hal::create_ext_harq_buffer_context_repository(nof_cbs, acc100_ext_harq_buff_size, false);
+      hal::create_ext_harq_buffer_context_repository(nof_cbs, acc100_ext_harq_buff_size, force_local_harq);
   TESTASSERT(harq_buffer_context);
 
   // Set the hardware-accelerator configuration.
   hal::bbdev_hwacc_pusch_dec_factory_configuration hw_decoder_config;
   hw_decoder_config.acc_type            = "acc100";
   hw_decoder_config.bbdev_accelerator   = bbdev_accelerator;
-  hw_decoder_config.force_local_harq    = force_local_harq;
+  //hw_decoder_config.force_local_harq    = force_local_harq;
   hw_decoder_config.harq_buffer_context = harq_buffer_context;
   hw_decoder_config.dedicated_queue     = dedicated_queue;
+  hw_decoder_config.ext_softbuffer      = ext_softbuffer;
 
   // ACC100 hardware-accelerator implementation.
   //return create_hw_accelerator_pusch_dec_factory(hw_decoder_config);
@@ -266,6 +267,8 @@ static std::shared_ptr<pusch_decoder_factory> create_acc100_pusch_decoder_factor
   decoder_hw_factory_config.segmenter_factory  = segmenter_rx_factory;
   decoder_hw_factory_config.crc_factory        = crc_calculator_factory;
   decoder_hw_factory_config.hw_decoder_factory = hw_decoder_factory;
+  decoder_hw_factory_config.nof_pusch_decoder_threads = 1; //update
+  decoder_hw_factory_config.executor = nullptr; //update
   return create_pusch_decoder_factory_hw(decoder_hw_factory_config);
 }
 

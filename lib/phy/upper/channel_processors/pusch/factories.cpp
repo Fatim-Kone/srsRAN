@@ -128,7 +128,7 @@ public:
     srsran_assert(crc_factory, "Invalid CRC factory.");
     srsran_assert(config.hw_decoder_factory, "Invalid hardware accelerator factory.");
 
-    // Creates a vector of hardware decoders. These are shared for all the PUSCH decoders.
+    // Creates a vector of hardware decoders. These are shared for all the PUSCH decoders.#
     std::vector<std::unique_ptr<hal::hw_accelerator_pusch_dec>> hw_decoders(
         std::max(1U, config.nof_pusch_decoder_threads));
     for (std::unique_ptr<hal::hw_accelerator_pusch_dec>& hw_decoder : hw_decoders) {

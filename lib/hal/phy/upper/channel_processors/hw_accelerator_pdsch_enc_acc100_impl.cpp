@@ -62,6 +62,7 @@ void hw_accelerator_pdsch_enc_acc100_impl::allocate_resources()
 void hw_accelerator_pdsch_enc_acc100_impl::hw_reserve_queue()
 {
   // Verify that no hardware-queue is reserved already.
+  printf("queue_id = %d\n", queue_id);
   if (queue_id < 0) {
     int qid = -1;
     do {

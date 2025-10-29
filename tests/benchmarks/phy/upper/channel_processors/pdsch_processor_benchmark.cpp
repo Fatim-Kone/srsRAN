@@ -915,7 +915,7 @@ int main(int argc, char** argv)
                 ctx->notifier->wait_for_finished();
               }
 
-              (*ctx->completion_counter)++;
+              ++(*ctx->completion_counter);
               return 0;
             };
 

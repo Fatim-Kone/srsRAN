@@ -42,6 +42,7 @@ struct bbdev_hwacc_pusch_dec_factory_configuration {
   bool force_local_harq = false;
   /// Indicates if the accelerated function uses a dedicated hardware queue or needs to reserve one for each operation.
   bool dedicated_queue = true;
+  bool ext_softbuffer  = true;
 };
 
 /// \brief Creates a bbdev-based PUSCH decoder hardware accelerator factory.

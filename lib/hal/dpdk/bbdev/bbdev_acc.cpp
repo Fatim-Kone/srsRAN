@@ -67,12 +67,12 @@ bbdev_acc::bbdev_acc(const bbdev_acc_configuration& cfg, const ::rte_bbdev_info&
   // Hardware-accelerated LDPC decoder functions use queues nof_ldpc_enc_lcores:(nof_ldpc_enc_lcores +
   // nof_ldpc_dec_lcores - 1)
   for (unsigned qid = nof_ldpc_enc_lcores, lastq = nof_ldpc_enc_lcores + nof_ldpc_dec_lcores; qid != lastq; qid++) {
-    (void)available_ldpc_dec_queue.try_push(qid);
+    (void) available_ldpc_dec_queue.try_push(qid);
   }
   // Hardware-accelerated FFT functions use queues (nof_ldpc_enc_lcores + nof_ldpc_dec_lcores):(nof_ldpc_enc_lcores +
   // nof_ldpc_dec_lcores + nof_fft_lcores - 1)
   for (unsigned qid = nof_ldpc_enc_lcores + nof_ldpc_dec_lcores, lastq = nof_vfs; qid != lastq; qid++) {
-    (void)available_fft_queue.try_push(qid);
+    (void) available_fft_queue.try_push(qid);
   }
 }
 
@@ -85,7 +85,6 @@ bbdev_acc::~bbdev_acc()
 int bbdev_acc::reserve_queue(::rte_bbdev_op_type op_type)
 {
   int queue_id = -1;
-
   if (op_type == RTE_BBDEV_OP_LDPC_ENC) {
     // Try to get an available LDPC encoder queue.
     unsigned qid;
@@ -105,7 +104,6 @@ int bbdev_acc::reserve_queue(::rte_bbdev_op_type op_type)
       queue_id = qid;
     }
   }
-
   return queue_id;
 }
 
