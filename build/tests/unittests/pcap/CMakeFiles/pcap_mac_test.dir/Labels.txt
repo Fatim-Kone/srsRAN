@@ -1,4 +1,0 @@
-# Directory labels
- pcap
-# Source files and their labels
-/home/netsys/srsRAN_Project/tests/unittests/pcap/mac_pcap_test.cpp
