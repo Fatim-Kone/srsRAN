@@ -144,7 +144,7 @@ bool hw_accelerator_pusch_dec_acc100_impl::hw_enqueue(span<const int8_t> data,
                                     cb_index,
                                     dec_config.absolute_cb_id,
                                     bbdev_accelerator->get_logger());
-
+    
     // HAL logging.
     srslog::basic_logger& logger = bbdev_accelerator->get_logger();
     logger.info("[bbdev] decoder enqueueing: cb={}, harq [new_data={}, sof_len={}, id={}], "

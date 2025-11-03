@@ -207,6 +207,7 @@ void pusch_processor_impl::process(span<uint8_t>                    data,
 
   // Configure and get the estimator notifier.
   dmrs_pusch_estimator&          estimator          = dependencies->get_estimator();
+  // on_estimation_complete, process_data called.
   dmrs_pusch_estimator_notifier& estimator_notifier = estimator_notifier_configurator.configure(
       data, std::move(rm_buffer), std::move(dependencies), notifier, grid, pdu, dmrs_type, nof_cdm_groups_without_data);
 

@@ -169,7 +169,6 @@ bool dpdk::set_ldpc_dec_bbdev_data(::rte_bbdev_dec_op&   dec_op,
       if (soft_input_data == nullptr) {
         // Free the input and input soft-data mbufs back to its original mbuf pools.
         ::rte_pktmbuf_free(dec_op.ldpc_dec.input.data);
-        ::rte_pktmbuf_free(m_head_soft_in);
         logger.error("[bbdev] Couldn't append {} bytes to the ldpc decoder harq input mbuf.", harq_output_len);
         return false;
       }
@@ -209,6 +208,7 @@ bool dpdk::set_ldpc_dec_bbdev_data(::rte_bbdev_dec_op&   dec_op,
   if (m_head_out == nullptr) {
     // Free the input and input soft-data mbufs back to its original mbuf pools.
     ::rte_pktmbuf_free(dec_op.ldpc_dec.input.data);
+    ::rte_pktmbuf_free(m_head_in);
     if (!new_data && !ext_softbuffer) {
       ::rte_pktmbuf_free(dec_op.ldpc_dec.harq_combined_input.data);
     }
@@ -294,7 +294,7 @@ bool dpdk::dequeue_ldpc_dec_operation(::rte_bbdev_dec_op&   dec_ops,
   ::rte_bbdev_dec_op* ops             = &dec_ops;
   uint16_t            num_deq_dec_ops = ::rte_bbdev_dequeue_ldpc_dec_ops(bbdev_id, dec_queue_id, &ops, num_dec_ops);
   if (num_deq_dec_ops <= 0) {
-    // logger.error("[bbdev] Couldn't dequeue new operations from the ldpc decoder.");
+    //logger.error("[bbdev] Couldn't dequeue new operations from the ldpc decoder.");
     return false;
   }
 

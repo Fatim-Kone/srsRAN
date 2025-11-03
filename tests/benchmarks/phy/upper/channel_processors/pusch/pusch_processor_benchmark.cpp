@@ -923,8 +923,8 @@ int main(int argc, char** argv)
 
               // Repeat PUSCH transmission.
               for (unsigned i_pusch = 0; i_pusch != batch_size_per_thread; ++i_pusch) {
-                data.clear();
-                data.resize(*ctx->tbs / 8);
+                //data.clear();
+                //data.resize(*ctx->tbs / 8);
                 // Reset notifier.
                 ctx->notifier->reset();
                 // Reserve buffer.

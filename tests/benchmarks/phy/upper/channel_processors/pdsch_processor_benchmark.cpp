@@ -671,7 +671,6 @@ static pdsch_processor_factory& get_processor_factory()
     // Create PDSCH encoder factory and generic PDSCH processor.
     pdsch_enc_factory = create_pdsch_encoder_factory(crc_calc_factory);
     TESTASSERT(pdsch_enc_factory);
-    printf("Creating pdsch_processor_factory_sw");
     pdsch_proc_factory = create_pdsch_processor_factory_sw(
         pdsch_enc_factory, pdsch_mod_factory, dmrs_pdsch_gen_factory, ptrs_pdsch_gen_factory);
     TESTASSERT(pdsch_proc_factory);
@@ -692,12 +691,10 @@ static pdsch_processor_factory& get_processor_factory()
   } else {
     std::shared_ptr<hal::hw_accelerator_pdsch_enc_factory> hw_encoder_factory =
         create_hw_accelerator_pdsch_enc_factory();
-        printf("Created HWACC Encoder\n");
     TESTASSERT(hw_encoder_factory, "Failed to create a HW acceleration encoder factory.");
 
     block_processor_factory =
         create_pdsch_block_processor_factory_hw(hw_encoder_factory, prg_factory, chan_modulation_factory);
-        printf("Created block processor factory\n");
   }
   TESTASSERT(block_processor_factory, "Failed to create a PDSCH block processor factory.");
 

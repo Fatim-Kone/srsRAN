@@ -24,9 +24,6 @@
 #include "pdsch_processor_helpers.h"
 #include "pdsch_processor_validator_impl.h"
 #include "srsran/srsvec/bit.h"
-#include <rte_cycles.h>
-#include <iostream>
-
 
 using namespace srsran;
 

@@ -72,10 +72,10 @@ expected<::rte_bbdev_info> dpdk::bbdev_start(const bbdev_acc_configuration& cfg,
   }
 
   // Enable interruptions.
-  if (::rte_bbdev_intr_enable(cfg.id) < 0) {
-    logger.error("[bbdev] interrupts for device {} not setup properly.", cfg.id);
-    return make_unexpected(default_error_t{});
-  }
+  // if (::rte_bbdev_intr_enable(cfg.id) < 0) {
+  //   logger.error("[bbdev] interrupts for device {} not setup properly.", cfg.id);
+  //   return make_unexpected(default_error_t{});
+  // }
 
   // Configure the queues (only those required).
   // The type of accelerated function assigned to a queue is following a known pattern: LDPC encoder, LDPC decoder and
